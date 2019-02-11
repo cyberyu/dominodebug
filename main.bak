@@ -1,0 +1,157 @@
+from os.path import dirname, join
+
+import pandas as pd
+import pickle
+from bokeh.layouts import layout, row, widgetbox, column
+from bokeh.models import ColumnDataSource, CustomJS, Panel
+from bokeh.models.widgets import Div,RangeSlider, Button, DataTable, TableColumn, NumberFormatter, CheckboxGroup, HTMLTemplateFormatter
+from bokeh.io import curdoc
+from bokeh.plotting import figure, show
+from bokeh.client import push_session
+
+
+#df = pd.read_csv(join(dirname(__file__), 'salary_data.csv'))
+
+df = pickle.load(open("pd_google_vanguard.pkl", "rb" )) 
+
+df['final_label']=df['a1_v']
+
+#df= df.query('a1==a1_v')
+df_ref = pickle.load(open("dfRef.pkl","rb"))
+#df_ref = pd.read_csv(join(dirname(__file__),'ques_abbr.csv'))
+
+#print(df_ref)
+source = ColumnDataSource(data=dict())
+sourceref = ColumnDataSource(data=dict())
+
+def update(attrname,old,new):
+    switch = check_HideAgree.active
+    #print (switch)
+
+    if (len(switch)==1):
+        current = df.query('a1!=a1_v')
+    else:
+        current = df
+
+    #current = df[(df['salary'] >= slider.value[0]) & (df['salary'] <= slider.value[1])].dropna()
+    #current = df
+    source.data = {
+        'Question'             : current.Question,
+        'a1'           :         current.a1,
+        's1' :                   current.s1,
+        'a1_v'         :         current.a1_v,
+        's1_v'         :         current.s1_v,
+        'final_label'  :         current.final_label
+    }
+
+    currentref=df_ref
+    sourceref.data={
+         'id': currentref.id,
+          'nickname':currentref.nickname,
+          'title':currentref.title
+    }
+
+
+template="""
+<div style="background:<%= 
+    (function colorfromint(){
+        if(a1 == a1_v){
+            return(" darkseagreen")}
+        else{return("red")}
+        }()) %>; 
+    color: white"> 
+<%= value %></div>
+"""
+
+#template="""
+#            <div style="background:<%= 
+#                (function colorfromint(){
+#                    if(a1 <> a1_v ){
+#                        return("green")}
+#                    }()) %>; 
+#                color: black"> 
+#            <%= value %>
+#            </div>
+#            """
+#            
+#
+#            
+formatter =  HTMLTemplateFormatter(template=template)
+
+
+
+#slider = RangeSlider(title="Min Score", start=10000, end=110000, value=(10000, 50000), step=1000, format="0,0")
+#slider.on_change('value', lambda attr, old, new: update())
+
+#button_save = Button(label="Save", button_type="success")
+#
+#button_save.on_click(save_data)
+#
+
+button = Button(label="Download", button_type="success", width=100)
+
+button.callback = CustomJS(args=dict(source=source),
+                           code=open(join(dirname(__file__), "download.js")).read())
+
+#
+#def save_data():
+#    
+
+
+columns = [
+    TableColumn(field="Question", title="Customer Question",width=700),
+    TableColumn(field="a1", title="Rank 1 Intent Google",width=100),
+    TableColumn(field="s1", title="Rank 1 Score Google", formatter=NumberFormatter(format="0.00"), width=100),
+    TableColumn(field="a1_v", title="Rank 1 Intent Vanguard", width=100),
+    TableColumn(field="s1_v", title="Rank 1 Score Vanguard", formatter=NumberFormatter(format="0.00"),width=100),
+    TableColumn(field="final_label", title="Final Labels",formatter=formatter, width=100) 
+]
+
+columnsref = [
+    TableColumn(field="id", title="id", width=100),
+    TableColumn(field="nickname", title="nickname", width=200),
+    TableColumn(field="title", title="title", width=700)
+]
+
+data_table = DataTable(source=source, columns=columns, editable=True, height=600,width=1300, fit_columns=False)
+ref_table = DataTable(source=sourceref, columns=columnsref, editable=True, width=1000)
+
+
+div=Div(text="""Auto-Labels""", width=100, height=10)
+
+div2 = Div(text="""Intent Table""", width=100, height=10)
+controls = widgetbox(button)
+check_HideAgree = CheckboxGroup(labels=["Hide Agreed Auto-labels "], active=[0, 1], width=100)
+
+check_HideAgree.on_change('active',update)
+#table = widgetbox(data_table)
+#ref = widgetbox(ref_table)
+#d= widgetbox(div)
+
+
+doc_layout = layout([[column(row(column(widgetbox(div),widgetbox(check_HideAgree),widgetbox(button)),widgetbox(data_table)),row(widgetbox(div2),widgetbox(ref_table)))]],sizing_mode='scale_width')
+#curdoc().add_root(column(row(d, table),ref))
+#curdoc().add_root(ref)
+curdoc().add_root(doc_layout)
+curdoc().title = "Export CSV"
+update()
+
+
+def on_change_data_source(attr, old, new):
+    print('-- OLD DATA: {}'.format(old))
+    print('-- NEW DATA: {}'.format(new))
+    print('-- SOURCE DATA: {}'.format(source.data))
+
+    # to check changes in the 'y' column:
+    indices = list(range(len(old['final_label'])))
+    changes = [(i,j,k) for i,j,k in zip(indices, old['final_label'], new['final_label']) if j != k]
+    if changes != []:
+        for t in changes:  # t = (index, old_val, new_val)
+            patch = {
+                'final_label' : [(t[0], int(t[2])), ]   # the new value is received as a string
+            }
+            source.patch(patch)   # this will call to this callback again, ugly
+                                  # so you will need to update the values on another source variable
+        print('-- SOURCE DATA AFTER PATCH: {}'.format(source.data))
+
+source.on_change('data', on_change_data_source)

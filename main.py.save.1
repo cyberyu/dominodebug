@@ -1,0 +1,70 @@
+from os.path import dirname, join
+
+import pandas as pd
+import pickle
+
+from bokeh.layouts import row, widgetbox
+from bokeh.models import ColumnDataSource, CustomJS
+from bokeh.models.widgets import RangeSlider, Button, DataTable, TableColumn, NumberFormatter
+from bokeh.io import curdoc
+
+#df = pd.read_csv(join(dirname(__file__), 'salary_data.csv'))
+
+df = pickle.load(open("pd_final_vanguardw2v_wmd.pkl", "rb" )) 
+df_ref = pd.read_csv(join(dirname(__file__),"ques_abbr.csv"))
+
+
+print(df_ref)
+source = ColumnDataSource(data=dict())
+sourceref = ColumnDataSource(data=dict())
+
+def update():
+    #current = df[(df['salary'] >= slider.value[0]) & (df['salary'] <= slider.value[1])].dropna()
+    current = df
+    source.data = {
+        'Question'             : current.Question,
+        'a1'           : current.a1,
+        's1' : current.s1,
+    }
+
+    currentref=df_ref
+    sourceref.data={
+         'Words': currentref.words,
+         'Aswer': currentref.answer
+	}
+
+#slider = RangeSlider(title="Min Score", start=10000, end=110000, value=(10000, 50000), step=1000, format="0,0")
+#slider.on_change('value', lambda attr, old, new: update())
+
+button = Button(label="Download", button_type="success")
+
+button.callback = CustomJS(args=dict(source=source),
+                           code=open(join(dirname(__file__), "download.js")).read())
+
+columns = [
+    TableColumn(field="Question", title="Customer Question"),
+    TableColumn(field="a1", title="Rank 1 Intent"),
+    TableColumn(field="s1", title="Rank 1 Score", formatter=NumberFormatter(format="0.00")) 
+]
+
+columnsref = [
+    TableColumn(field="words", title="Words"),
+    TableColumn(field="answer", title="Answer")
+]
+
+data_table = DataTable(source=source, columns=columns, editable=True, width=1200)
+ref_table = DataTable(source=sourceref, columns=columnsref, editable=True)
+
+
+
+
+controls = widgetbox(button)
+table = widgetbox(data_table)
+ref = widgetbox(ref_table)
+curdoc().add_root(row(table))
+curdoc().add_root(row(ref))
+#curdoc().add_root(row(data_table))
+
+curdoc().title = "Export CSV"
+
+update()
